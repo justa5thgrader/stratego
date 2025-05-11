@@ -16,7 +16,7 @@
     <!-- Include Socket.io for real-time communication -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     
-se the cor u    <!-- Include Google Fonts -->
+    <!-- Include Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -431,11 +431,48 @@ se the cor u    <!-- Include Google Fonts -->
             
             // Connect to the server
             const connectToServer = () => {
-                // In a real implementation, you would connect to your backend server
-                // For this demo, we'll simulate the connection
                 setMessage('Connecting to server...');
                 
-                // Simulate connection delay
+                try {
+                    // Create a real Socket.io connection
+                    socketRef.current = io('http://localhost:3000'); // Change this to your server URL
+                    
+                    // Set up event listeners
+                    socketRef.current.on('connect', () => {
+                        setConnected(true);
+                        setMessage('Connected! Create or join a game.');
+                    });
+                    
+                    socketRef.current.on('disconnect', () => {
+                        setConnected(false);
+                        setMessage('Disconnected from server. Trying to reconnect...');
+                    });
+                    
+                    socketRef.current.on('error', (error) => {
+                        console.error('Socket error:', error);
+                        setMessage('Connection error. Please try again.');
+                    });
+                    
+                    // Chat message handler
+                    socketRef.current.on('chat_message', (data) => {
+                        if (data.gameId === gameId) {
+                            receiveChatMessage(data.message);
+                        }
+                    });
+                    
+                    // For demo purposes, fallback to simulation if connection fails
+                    socketRef.current.on('connect_error', () => {
+                        console.warn('Using simulated connection instead of real Socket.io');
+                        simulateConnection();
+                    });
+                } catch (error) {
+                    console.error('Failed to connect to server:', error);
+                    simulateConnection();
+                }
+            };
+            
+            // Simulate connection for demo purposes
+            const simulateConnection = () => {
                 setTimeout(() => {
                     setConnected(true);
                     setMessage('Connected! Create or join a game.');
@@ -505,6 +542,50 @@ se the cor u    <!-- Include Google Fonts -->
                 }
             };
             
+            // Finish setting up pieces
+            const finishSetup = () => {
+                // Check if all pieces are placed
+                let allPiecesPlaced = true;
+                for (const [pieceType, count] of Object.entries(setupPieces[playerColor])) {
+                    if (count > 0) {
+                        allPiecesPlaced = false;
+                        break;
+                    }
+                }
+                
+                if (!allPiecesPlaced) {
+                    setMessage('You must place all your pieces before starting!');
+                    return;
+                }
+                
+                // Send piece setup to server
+                if (socketRef.current && socketRef.current.connected) {
+                    // Create a simplified board representation with just the player's pieces
+                    const pieceSetup = board.map(row => 
+                        row.map(cell => 
+                            cell.piece && cell.piece.color === playerColor ? cell.piece : null
+                        )
+                    );
+                    
+                    socketRef.current.emit('setup_complete', {
+                        gameId,
+                        pieceSetup
+                    });
+                    
+                    setMessage('Waiting for opponent to finish setup...');
+                    
+                    // Listen for both players ready
+                    socketRef.current.once('game_start', () => {
+                        setGamePhase('play');
+                        setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
+                    });
+                } else {
+                    // Fallback for local testing
+                    setGamePhase('play');
+                    setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
+                }
+            };
+            
             // Place a piece during setup
             const handleSetupPlacement = (row, col) => {
                 if (!selectedSetupPiece) return;
@@ -519,8 +600,10 @@ se the cor u    <!-- Include Google Fonts -->
                 // Check if the cell is empty
                 if (board[row][col].piece || board[row][col].isWater) return;
                 
+                // Create a deep copy of the board
+                const newBoard = JSON.parse(JSON.stringify(board));
+                
                 // Place the piece
-                const newBoard = [...board];
                 newBoard[row][col].piece = {
                     type: selectedSetupPiece,
                     rank: PIECE_TYPES[selectedSetupPiece].rank,
@@ -528,6 +611,8 @@ se the cor u    <!-- Include Google Fonts -->
                     revealed: false,
                     icon: PIECE_TYPES[selectedSetupPiece].icon
                 };
+                
+                // Update the board state
                 setBoard(newBoard);
                 
                 // Update remaining pieces
@@ -539,54 +624,11 @@ se the cor u    <!-- Include Google Fonts -->
                 if (newSetupPieces[playerColor][selectedSetupPiece] === 0) {
                     setSelectedSetupPiece(null);
                 }
-                
-                // Finish setting up pieces
-                const finishSetup = () => {
-                    // Check if all pieces are placed
-                    let allPiecesPlaced = true;
-                    for (const [pieceType, count] of Object.entries(setupPieces[playerColor])) {
-                        if (count > 0) {
-                            allPiecesPlaced = false;
-                            break;
-                        }
-                    }
-                    
-                    if (!allPiecesPlaced) {
-                        setMessage('You must place all your pieces before starting!');
-                        return;
-                    }
-                    
-                    // Send piece setup to server
-                    if (socketRef.current && socketRef.current.connected) {
-                        // Create a simplified board representation with just the player's pieces
-                        const pieceSetup = board.map(row => 
-                            row.map(cell => 
-                                cell.piece && cell.piece.color === playerColor ? cell.piece : null
-                            )
-                        );
-                        
-                        socketRef.current.emit('setup_complete', {
-                            gameId,
-                            pieceSetup
-                        });
-                        
-                        setMessage('Waiting for opponent to finish setup...');
-                        
-                        // Listen for both players ready
-                        socketRef.current.once('game_start', () => {
-                            setGamePhase('play');
-                            setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
-                        });
-                    } else {
-                        // Fallback for local testing
-                        setGamePhase('play');
-                        setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
-                    }
-                };
             };
             
             // Handle cell click during gameplay
             const handleCellClick = (row, col) => {
+                // During setup phase, handle piece placement
                 if (gamePhase === 'setup') {
                     handleSetupPlacement(row, col);
                     return;
@@ -759,40 +801,37 @@ se the cor u    <!-- Include Google Fonts -->
                 }
             };
             
+            // Add effect to clean up polling interval
+            React.useEffect(() => {
+                return () => {
+                    if (apiRef.current && apiRef.current.pollingInterval) {
+                        clearInterval(apiRef.current.pollingInterval);
+                    }
+                };
+            }, []);
+            
             // Render the game board
             const renderBoard = () => {
                 return (
-                    <div className="board-container flex flex-col items-center">
-                        <div className="board border-2 border-indigo-600 bg-gray-800">
+                    <div className="board-container">
+                        <div className="board">
                             {board.map((row, rowIndex) => (
-                                <div key={rowIndex} className="flex">
+                                <div key={rowIndex} className="board-row flex">
                                     {row.map((cell, colIndex) => {
-                                        const isSelected = selectedPiece && 
-                                            selectedPiece[0] === rowIndex && 
-                                            selectedPiece[1] === colIndex;
-                                        
-                                        const isPossibleMove = possibleMoves.some(
-                                            move => move.row === rowIndex && move.col === colIndex
-                                        );
-                                        
-                                        // Checkerboard pattern for non-water cells
-                                        const isEvenCell = (rowIndex + colIndex) % 2 === 0;
-                                        const cellBgClass = cell.isWater ? 'water-cell' : 
-                                            (isEvenCell ? 'bg-gray-800' : 'bg-gray-700');
+                                        const isSelected = selectedPiece && selectedPiece[0] === rowIndex && selectedPiece[1] === colIndex;
+                                        const isPossibleMove = possibleMoves.some(move => move.row === rowIndex && move.col === colIndex);
                                         
                                         return (
                                             <div 
-                                                key={`${rowIndex}-${colIndex}`}
-                                                className={`board-cell ${cellBgClass} ${isPossibleMove ? 'possible-move' : ''}`}
+                                                key={colIndex} 
+                                                className={`board-cell ${cell.isWater ? 'water-cell' : ''} ${isPossibleMove ? 'possible-move' : ''}`}
                                                 onClick={() => handleCellClick(rowIndex, colIndex)}
                                             >
                                                 {cell.piece && (
                                                     <div 
                                                         className={`piece ${cell.piece.color}-piece ${isSelected ? 'selected' : ''} ${!cell.piece.revealed && cell.piece.color !== playerColor ? 'hidden-piece' : ''}`}
                                                     >
-                                                        {cell.piece.revealed || cell.piece.color === playerColor 
-                                                            ? cell.piece.icon 
-                                                            : '?'}
+                                                        {cell.piece.revealed || cell.piece.color === playerColor ? cell.piece.icon : '?'}
                                                     </div>
                                                 )}
                                             </div>
@@ -807,30 +846,65 @@ se the cor u    <!-- Include Google Fonts -->
             
             // Render the setup panel
             const renderSetupPanel = () => {
-                if (gamePhase !== 'setup' || !playerColor) return null;
+                if (gamePhase !== 'setup' || waitingForOpponent) return null;
+                
+                // Calculate if all pieces are placed
+                let allPiecesPlaced = true;
+                for (const [pieceType, count] of Object.entries(setupPieces[playerColor])) {
+                    if (count > 0) {
+                        allPiecesPlaced = false;
+                        break;
+                    }
+                }
                 
                 return (
-                    <div className="setup-panel mt-6 p-6 rounded-lg">
-                        <h3 className="text-xl mb-4 font-bold text-indigo-300">Place Your Skibidi Pieces</h3>
-                        <div className="grid grid-cols-4 gap-3">
+                    <div className="setup-panel p-6 rounded-lg mt-6">
+                        <h2 className="text-xl font-bold mb-4">Set Up Your Pieces</h2>
+                        <p className="mb-4">Select a piece type and place it on the board in your territory.</p>
+                        
+                        <div className="grid grid-cols-3 gap-3 mb-6">
                             {Object.entries(setupPieces[playerColor]).map(([pieceType, count]) => (
                                 <div 
                                     key={pieceType}
-                                    className={`piece-option p-3 rounded-lg ${selectedSetupPiece === pieceType ? 'bg-indigo-700 border-indigo-300' : 'bg-gray-700'} ${count === 0 ? 'opacity-50' : 'cursor-pointer hover:bg-gray-600'}`}
-                                    onClick={() => count > 0 && handleSetupPieceSelect(pieceType)}
+                                    className={`piece-option p-3 rounded-lg ${selectedSetupPiece === pieceType ? 'bg-skibidi-blue' : 'bg-gray-700'} ${count === 0 ? 'opacity-50' : ''}`}
+                                    onClick={() => handleSetupPieceSelect(pieceType)}
                                 >
                                     <div className="flex items-center">
-                                        <span className="mr-3 text-2xl">{PIECE_TYPES[pieceType].icon}</span>
+                                        <div className={`piece ${playerColor}-piece w-10 h-10 mr-3`}>
+                                            {PIECE_TYPES[pieceType].icon}
+                                        </div>
                                         <div>
-                                            <div className="font-medium">{PIECE_TYPES[pieceType].name}</div>
-                                            <div className="text-sm text-indigo-300">{count} left</div>
+                                            <div className="text-sm font-bold">{PIECE_TYPES[pieceType].name}</div>
+                                            <div className="text-xs">{count} left</div>
                                         </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                        <div className="mt-4 text-sm text-gray-300 bg-gray-800 p-3 rounded-lg border border-gray-700">
-                            <span className="text-indigo-300 font-bold">TIP:</span> Place your pieces in the {playerColor === 'red' ? 'bottom' : 'top'} 4 rows. Remember to protect your flag!
+                        
+                        <div className="flex justify-between items-center">
+                            <button 
+                                className="btn bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded"
+                                onClick={() => {
+                                    // Reset the board
+                                    setBoard(initializeBoard());
+                                    setSetupPieces({
+                                        red: { ...(gameMode === 'duel' ? DUEL_SETUP : INITIAL_SETUP) },
+                                        blue: { ...(gameMode === 'duel' ? DUEL_SETUP : INITIAL_SETUP) }
+                                    });
+                                    setSelectedSetupPiece(null);
+                                }}
+                            >
+                                Reset
+                            </button>
+                            
+                            <button 
+                                className={`btn ${allPiecesPlaced ? 'bg-skibidi-green hover:bg-green-700' : 'bg-gray-500 cursor-not-allowed'} text-white font-bold py-2 px-4 rounded`}
+                                onClick={finishSetup}
+                                disabled={!allPiecesPlaced}
+                            >
+                                Start Game
+                            </button>
                         </div>
                     </div>
                 );
@@ -941,58 +1015,63 @@ se the cor u    <!-- Include Google Fonts -->
                 );
             };
             
-            return (
-                <div className="game-container p-6 min-h-screen flex flex-col items-center">
-                    <h1 className="game-title text-4xl mb-6 text-center text-indigo-400">SKIBIDI STRATEGO</h1>
-                    
-                    {message && (
-                        <div className="message-box p-4 mb-6 rounded-lg text-center w-full max-w-2xl">
-                            {message}
-                        </div>
-                    )}
-                    
-                    {renderConnectionPanel()}
-                    {renderGameCreationPanel()}
-                    {renderWaitingPanel()}
-                    
-                    {(gameId && !waitingForOpponent) && (
-                        <div className="game-board-container mt-6">
-                            {renderBoard()}
-                            {renderSetupPanel()}
-                            {renderGameOverPanel()}
-                        </div>
-                    )}
-                    
-                    {gamePhase === 'play' && (
-                        <div className="game-info mt-6 p-6 rounded-lg">
-                            <h3 className="text-xl mb-4 font-bold text-indigo-300">Game Info</h3>
-                            <div className="flex flex-col space-y-4">
-                                <div className="flex items-center">
-                                    <span className="w-32">You are playing as:</span> 
-                                    <span className={`font-bold text-lg px-3 py-1 rounded ${playerColor === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
-                                        {playerColor.toUpperCase()} TEAM
-                                    </span>
-                                </div>
-                                <div className="flex items-center">
-                                    <span className="w-32">Current turn:</span> 
-                                    <span className={`font-bold text-lg px-3 py-1 rounded ${currentPlayer === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
-                                        {currentPlayer.toUpperCase()} TEAM
-                                    </span>
-                                </div>
-                                <div className="mt-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
-                                    <h4 className="font-bold text-indigo-300 mb-2">Game Rules:</h4>
-                                    <ul className="text-sm text-gray-300 list-disc pl-5 space-y-1">
-                                        <li>Move one piece per turn or attack an opponent</li>
-                                        <li>Higher rank captures lower rank</li>
-                                        <li>Spy (🕵️) can defeat Marshal (🔱) when attacking</li>
-                                        <li>Miner (⛏️) can defuse Bombs (💣)</li>
-                                        <li>Scout (👁️) can move multiple spaces</li>
-                                        <li>Capture the Flag (🚩) to win!</li>
-                                    </ul>
-                                </div>
+            // Render game info panel
+            const renderGameInfo = () => {
+                if (gamePhase !== 'play') return null;
+                
+                return (
+                    <div className="game-info mt-6 p-6 rounded-lg">
+                        <h3 className="text-xl mb-4 font-bold text-indigo-300">Game Info</h3>
+                        <div className="flex flex-col space-y-4">
+                            <div className="flex items-center">
+                                <span className="w-32">You are playing as:</span> 
+                                <span className={`font-bold text-lg px-3 py-1 rounded ${playerColor === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
+                                    {playerColor.toUpperCase()} TEAM
+                                </span>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="w-32">Current turn:</span> 
+                                <span className={`font-bold text-lg px-3 py-1 rounded ${currentPlayer === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
+                                    {currentPlayer.toUpperCase()} TEAM
+                                </span>
+                            </div>
+                            <div className="mt-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
+                                <h4 className="font-bold text-indigo-300 mb-2">Game Rules:</h4>
+                                <ul className="text-sm text-gray-300 list-disc pl-5 space-y-1">
+                                    <li>Move one piece per turn or attack an opponent</li>
+                                    <li>Higher rank captures lower rank</li>
+                                    <li>Spy (🕵️) can defeat Marshal (🔱) when attacking</li>
+                                    <li>Miner (⛏️) can defuse Bombs (💣)</li>
+                                    <li>Scout (👁️) can move multiple spaces</li>
+                                    <li>Capture the Flag (🚩) to win!</li>
+                                </ul>
                             </div>
                         </div>
-                    )}
+                    </div>
+                );
+            };
+            
+            // Render chat component
+            const renderChat = () => {
+                return null; // Placeholder for future chat implementation
+            };
+            
+            // Main render function
+            return (
+                <div className="container mx-auto px-4 py-8">
+                    <h1 className="game-title text-4xl md:text-6xl text-center mb-8 text-skibidi-blue">SKIBIDI STRATEGO</h1>
+                    
+                    <div className="message-box p-4 rounded-lg mb-6">
+                        <p className="text-lg">{message}</p>
+                    </div>
+                    
+                    {!connected && renderConnectionPanel()}
+                    {connected && !gameId && renderGameCreationPanel()}
+                    {gameId && renderGameInfo()}
+                    {gamePhase === 'setup' && renderSetupPanel()}
+                    {renderBoard()}
+                    {gamePhase === 'gameOver' && renderGameOverPanel()}
+                    {renderChat()}
                     
                     <div className="mt-8 text-center text-gray-500 text-sm">
                         Skibidi Stratego - A Skibidi-themed adaptation of the classic game
@@ -1046,3 +1125,13 @@ se the cor u    <!-- Include Google Fonts -->
                     }
                 };
             }, [board, playerColor]);
+            
+            // Add effect for socket cleanup
+            React.useEffect(() => {
+                // Cleanup function
+                return () => {
+                    if (socketRef.current) {
+                        socketRef.current.disconnect();
+                    }
+                };
+            }, []);
