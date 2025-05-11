@@ -1,1 +1,970 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skibidi Stratego</title>
+    
+    <!-- Include React, ReactDOM, and Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Include Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Include Socket.io for real-time communication -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+se the cor u    <!-- Include Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            background-attachment: fixed;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        
+        .game-title {
+            font-family: 'Press Start 2P', cursive;
+            text-shadow: 0 0 10px #4f46e5, 0 0 20px #4f46e5, 0 0 30px #4f46e5;
+            letter-spacing: 2px;
+        }
+        
+        .board-container {
+            perspective: 1000px;
+        }
+        
+        .board {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            transform: rotateX(15deg);
+            transform-style: preserve-3d;
+        }
+        
+        .board::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            background: linear-gradient(45deg, #4f46e5, #7c3aed, #ec4899, #4f46e5);
+            z-index: -1;
+            border-radius: 12px;
+            animation: border-glow 3s linear infinite;
+            background-size: 400%;
+        }
+        
+        @keyframes border-glow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .board-cell {
+            width: 60px;
+            height: 60px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-color: rgba(30, 41, 59, 0.8);
+        }
+        
+        .board-cell:hover {
+            transform: translateZ(10px);
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(79, 70, 229, 0.5);
+        }
+        
+        .water-cell {
+            background: linear-gradient(45deg, #0ea5e9 0%, #0284c7 100%);
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+            animation: water-ripple 3s infinite ease-in-out;
+        }
+        
+        @keyframes water-ripple {
+            0%, 100% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+        }
+        
+        .piece {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            user-select: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            font-size: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .piece::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 70%);
+            opacity: 0.5;
+        }
+        
+        .red-piece {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+            border: 2px solid #f87171;
+        }
+        
+        .blue-piece {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border: 2px solid #93c5fd;
+        }
+        
+        .hidden-piece {
+            background: linear-gradient(135deg, #4b5563 0%, #1f2937 100%);
+            border: 2px solid #9ca3af;
+        }
+        
+        .selected {
+            box-shadow: 0 0 15px 5px #facc15, 0 0 30px #facc15;
+            transform: scale(1.1);
+            z-index: 20;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 15px 5px rgba(250, 204, 21, 0.7), 0 0 30px rgba(250, 204, 21, 0.5); }
+            50% { box-shadow: 0 0 20px 8px rgba(250, 204, 21, 1), 0 0 40px rgba(250, 204, 21, 0.8); }
+            100% { box-shadow: 0 0 15px 5px rgba(250, 204, 21, 0.7), 0 0 30px rgba(250, 204, 21, 0.5); }
+        }
+        
+        .possible-move {
+            position: relative;
+        }
+        
+        .possible-move::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.5) 0%, rgba(34, 197, 94, 0.2) 70%, transparent 100%);
+            z-index: 1;
+            pointer-events: none;
+            animation: glow-pulse 1.5s infinite;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.8; }
+        }
+        
+        .btn {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            z-index: 1;
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: all 0.5s ease;
+            z-index: -1;
+        }
+        
+        .btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 7px 14px rgba(0, 0, 0, 0.3);
+        }
+        
+        .piece-option {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .piece-option:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .piece-option::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .piece-option:hover::after {
+            opacity: 1;
+        }
+        
+        .message-box {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-left: 4px solid #4f46e5;
+            animation: message-pulse 2s infinite;
+        }
+        
+        @keyframes message-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+        }
+        
+        .setup-panel, .game-info, .connection-panel, .game-creation-panel, .game-over-panel {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .setup-panel:hover, .game-info:hover, .connection-panel:hover, .game-creation-panel:hover {
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+            transform: translateY(-5px);
+        }
+        
+        .game-over-panel {
+            animation: scale-bounce 1s ease-in-out;
+        }
+        
+        @keyframes scale-bounce {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .skibidi-theme {
+            position: relative;
+        }
+        
+        .skibidi-theme::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMjAgMGMxMS4wNDYgMCAyMCA4Ljk1NCAyMCAyMHMtOC45NTQgMjAtMjAgMjBTMCAzMS4wNDYgMCAyMCA4Ljk1NCAwIDIwIDB6IiBmaWxsPSIjNGY0NmU1IiBmaWxsLW9wYWNpdHk9IjAuMDUiLz48L3N2Zz4=');
+            opacity: 0.5;
+            z-index: -1;
+        }
+    </style>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        skibidi: {
+                            blue: '#4f46e5',
+                            red: '#ef4444',
+                            green: '#22c55e',
+                            purple: '#7c3aed',
+                            pink: '#ec4899'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen skibidi-theme">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        // Define TypeScript types
+        /**
+         * @typedef {'spy'|'scout'|'miner'|'sergeant'|'lieutenant'|'captain'|'major'|'colonel'|'general'|'marshal'|'bomb'|'flag'} PieceType
+         * @typedef {'red'|'blue'} PlayerColor
+         * 
+         * @typedef {Object} Piece
+         * @property {PieceType} type - The type of the piece
+         * @property {number} rank - The rank of the piece (0-10, with 0 being the highest)
+         * @property {PlayerColor} color - The color of the piece
+         * @property {boolean} revealed - Whether the piece has been revealed to the opponent
+         * @property {string} icon - The icon representing the piece
+         * 
+         * @typedef {Object} Cell
+         * @property {number} row - The row of the cell
+         * @property {number} col - The column of the cell
+         * @property {boolean} isWater - Whether the cell is water
+         * @property {Piece|null} piece - The piece on the cell, or null if empty
+         */
+        
+        // Game constants
+        const BOARD_SIZE = 10;
+        const WATER_CELLS = [
+            {row: 4, col: 2}, {row: 4, col: 3}, {row: 5, col: 2}, {row: 5, col: 3},
+            {row: 4, col: 6}, {row: 4, col: 7}, {row: 5, col: 6}, {row: 5, col: 7}
+        ];
+        
+        // Piece definitions with Skibidi theme
+        const PIECE_TYPES = {
+            spy: { rank: 1, name: "Skibidi Spy", icon: "🕵️" },
+            scout: { rank: 2, name: "Skibidi Scout", icon: "👁️" },
+            miner: { rank: 3, name: "Skibidi Miner", icon: "⛏️" },
+            sergeant: { rank: 4, name: "Skibidi Sergeant", icon: "🔰" },
+            lieutenant: { rank: 5, name: "Skibidi Lieutenant", icon: "⭐" },
+            captain: { rank: 6, name: "Skibidi Captain", icon: "⭐⭐" },
+            major: { rank: 7, name: "Skibidi Major", icon: "⭐⭐⭐" },
+            colonel: { rank: 8, name: "Skibidi Colonel", icon: "🎖️" },
+            general: { rank: 9, name: "Skibidi General", icon: "👑" },
+            marshal: { rank: 10, name: "Skibidi Marshal", icon: "🔱" },
+            bomb: { rank: 0, name: "Skibidi Bomb", icon: "💣" },
+            flag: { rank: 0, name: "Skibidi Flag", icon: "🚩" }
+        };
+        
+        // Initial piece setup for each player
+        const INITIAL_SETUP = {
+            spy: 1,
+            scout: 8,
+            miner: 5,
+            sergeant: 4,
+            lieutenant: 4,
+            captain: 4,
+            major: 3,
+            colonel: 2,
+            general: 1,
+            marshal: 1,
+            bomb: 6,
+            flag: 1
+        };
+        
+        // Duel mode setup with fewer pieces
+        const DUEL_SETUP = {
+            spy: 1,
+            scout: 2,
+            miner: 2,
+            sergeant: 0,
+            lieutenant: 0,
+            captain: 0,
+            major: 0,
+            colonel: 0,
+            general: 1,
+            marshal: 1,
+            bomb: 2,
+            flag: 1
+        };
+        
+        // React component for the game
+        const SkibidiStratego = () => {
+            const [board, setBoard] = React.useState(() => initializeBoard());
+            const [gamePhase, setGamePhase] = React.useState('setup'); // 'setup', 'play', 'gameOver'
+            const [currentPlayer, setCurrentPlayer] = React.useState('red');
+            const [selectedPiece, setSelectedPiece] = React.useState(null);
+            const [possibleMoves, setPossibleMoves] = React.useState([]);
+            const [setupPieces, setSetupPieces] = React.useState({
+                red: { ...INITIAL_SETUP },
+                blue: { ...INITIAL_SETUP }
+            });
+            const [selectedSetupPiece, setSelectedSetupPiece] = React.useState(null);
+            const [winner, setWinner] = React.useState(null);
+            const [gameId, setGameId] = React.useState(null);
+            const [playerColor, setPlayerColor] = React.useState(null);
+            const [connected, setConnected] = React.useState(false);
+            const [waitingForOpponent, setWaitingForOpponent] = React.useState(false);
+            const [message, setMessage] = React.useState('');
+            const [gameMode, setGameMode] = React.useState(null); // 'normal' or 'duel'
+            
+            const socketRef = React.useRef(null);
+            
+            // Initialize the game board
+            function initializeBoard() {
+                const board = [];
+                
+                for (let row = 0; row < BOARD_SIZE; row++) {
+                    const boardRow = [];
+                    for (let col = 0; col < BOARD_SIZE; col++) {
+                        const isWater = WATER_CELLS.some(cell => cell.row === row && cell.col === col);
+                        boardRow.push({
+                            row,
+                            col,
+                            isWater,
+                            piece: null
+                        });
+                    }
+                    board.push(boardRow);
+                }
+                
+                return board;
+            }
+            
+            // Connect to the server
+            const connectToServer = () => {
+                // In a real implementation, you would connect to your backend server
+                // For this demo, we'll simulate the connection
+                setMessage('Connecting to server...');
+                
+                // Simulate connection delay
+                setTimeout(() => {
+                    setConnected(true);
+                    setMessage('Connected! Create or join a game.');
+                }, 1000);
+            };
+            
+            // Create a new game
+            const createGame = (mode) => {
+                setMessage(`Creating new ${mode} game...`);
+                setGameMode(mode);
+                
+                // Set up the appropriate pieces based on game mode
+                const setupConfig = mode === 'duel' ? DUEL_SETUP : INITIAL_SETUP;
+                setSetupPieces({
+                    red: { ...setupConfig },
+                    blue: { ...setupConfig }
+                });
+                
+                // Simulate server response
+                setTimeout(() => {
+                    const newGameId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    setGameId(newGameId);
+                    setPlayerColor('red');
+                    setWaitingForOpponent(true);
+                    setMessage(`${mode.charAt(0).toUpperCase() + mode.slice(1)} game created! Share this code with your opponent: ${newGameId}`);
+                    
+                    // Simulate opponent joining after some time
+                    setTimeout(() => {
+                        setWaitingForOpponent(false);
+                        setMessage('Opponent joined! Set up your pieces.');
+                    }, 5000);
+                }, 1000);
+            };
+            
+            // Join an existing game
+            const joinGame = () => {
+                const gameCodeInput = prompt('Enter the game code:');
+                if (!gameCodeInput) return;
+                
+                setMessage('Joining game...');
+                
+                // Simulate server response
+                setTimeout(() => {
+                    setGameId(gameCodeInput);
+                    setPlayerColor('blue');
+                    
+                    // In a real implementation, the server would tell us the game mode
+                    // For this demo, we'll assume it's a normal game if not specified
+                    const assumedGameMode = 'normal'; // This would come from the server in a real app
+                    setGameMode(assumedGameMode);
+                    
+                    // Set up the appropriate pieces based on game mode
+                    const setupConfig = assumedGameMode === 'duel' ? DUEL_SETUP : INITIAL_SETUP;
+                    setSetupPieces({
+                        red: { ...setupConfig },
+                        blue: { ...setupConfig }
+                    });
+                    
+                    setMessage(`Joined ${assumedGameMode} game! Set up your pieces.`);
+                }, 1000);
+            };
+            
+            // Handle piece selection during setup
+            const handleSetupPieceSelect = (pieceType) => {
+                if (setupPieces[playerColor][pieceType] > 0) {
+                    setSelectedSetupPiece(pieceType);
+                }
+            };
+            
+            // Place a piece during setup
+            const handleSetupPlacement = (row, col) => {
+                if (!selectedSetupPiece) return;
+                
+                // Check if the cell is in the player's setup area
+                const isValidSetupArea = playerColor === 'red' 
+                    ? row >= 6 && row < BOARD_SIZE 
+                    : row >= 0 && row < 4;
+                
+                if (!isValidSetupArea) return;
+                
+                // Check if the cell is empty
+                if (board[row][col].piece || board[row][col].isWater) return;
+                
+                // Place the piece
+                const newBoard = [...board];
+                newBoard[row][col].piece = {
+                    type: selectedSetupPiece,
+                    rank: PIECE_TYPES[selectedSetupPiece].rank,
+                    color: playerColor,
+                    revealed: false,
+                    icon: PIECE_TYPES[selectedSetupPiece].icon
+                };
+                setBoard(newBoard);
+                
+                // Update remaining pieces
+                const newSetupPieces = { ...setupPieces };
+                newSetupPieces[playerColor][selectedSetupPiece]--;
+                setSetupPieces(newSetupPieces);
+                
+                // If no more pieces of this type, deselect it
+                if (newSetupPieces[playerColor][selectedSetupPiece] === 0) {
+                    setSelectedSetupPiece(null);
+                }
+                
+                // Check if all pieces are placed
+                const allPiecesPlaced = Object.values(newSetupPieces[playerColor]).every(count => count === 0);
+                if (allPiecesPlaced) {
+                    // In a real implementation, you would notify the server
+                    // For this demo, we'll simulate both players being ready
+                    setMessage('Waiting for opponent to finish setup...');
+                    
+                    // Simulate opponent finishing setup
+                    setTimeout(() => {
+                        setGamePhase('play');
+                        setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
+                    }, 2000);
+                }
+            };
+            
+            // Handle cell click during gameplay
+            const handleCellClick = (row, col) => {
+                if (gamePhase === 'setup') {
+                    handleSetupPlacement(row, col);
+                    return;
+                }
+                
+                if (gamePhase !== 'play' || currentPlayer !== playerColor) return;
+                
+                const cell = board[row][col];
+                
+                // If a piece is already selected
+                if (selectedPiece) {
+                    // Check if the clicked cell is a valid move
+                    const isValidMove = possibleMoves.some(move => move.row === row && move.col === col);
+                    
+                    if (isValidMove) {
+                        // Move the piece
+                        const newBoard = [...board];
+                        const [selectedRow, selectedCol] = selectedPiece;
+                        const movingPiece = newBoard[selectedRow][selectedCol].piece;
+                        
+                        // If there's an enemy piece, resolve combat
+                        if (cell.piece && cell.piece.color !== playerColor) {
+                            const attackerRank = movingPiece.rank;
+                            const defenderRank = cell.piece.rank;
+                            
+                            // Reveal both pieces
+                            movingPiece.revealed = true;
+                            cell.piece.revealed = true;
+                            
+                            // Special case: Spy vs Marshal
+                            if (movingPiece.type === 'spy' && cell.piece.type === 'marshal') {
+                                newBoard[row][col].piece = movingPiece;
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                            // Special case: Miner vs Bomb
+                            else if (movingPiece.type === 'miner' && cell.piece.type === 'bomb') {
+                                newBoard[row][col].piece = movingPiece;
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                            // Flag captured
+                            else if (cell.piece.type === 'flag') {
+                                setWinner(playerColor);
+                                setGamePhase('gameOver');
+                                newBoard[row][col].piece = movingPiece;
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                            // Normal combat
+                            else if (attackerRank > defenderRank) {
+                                newBoard[row][col].piece = movingPiece;
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                            else if (attackerRank === defenderRank) {
+                                // Both pieces are removed on a tie
+                                newBoard[row][col].piece = null;
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                            // Defender wins
+                            else {
+                                newBoard[selectedRow][selectedCol].piece = null;
+                            }
+                        }
+                        // Empty cell, just move
+                        else {
+                            newBoard[row][col].piece = movingPiece;
+                            newBoard[selectedRow][selectedCol].piece = null;
+                        }
+                        
+                        setBoard(newBoard);
+                        setSelectedPiece(null);
+                        setPossibleMoves([]);
+                        
+                        // Switch turns
+                        const nextPlayer = currentPlayer === 'red' ? 'blue' : 'red';
+                        setCurrentPlayer(nextPlayer);
+                        setMessage(`${nextPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
+                        
+                        // In a real implementation, you would send this move to the server
+                    } else {
+                        // Deselect if clicking elsewhere
+                        setSelectedPiece(null);
+                        setPossibleMoves([]);
+                    }
+                } else {
+                    // Select a piece
+                    if (cell.piece && cell.piece.color === playerColor && cell.piece.type !== 'bomb' && cell.piece.type !== 'flag') {
+                        setSelectedPiece([row, col]);
+                        
+                        // Calculate possible moves
+                        const moves = [];
+                        
+                        // Scout can move any number of spaces in a straight line
+                        if (cell.piece.type === 'scout') {
+                            // Check up
+                            for (let r = row - 1; r >= 0; r--) {
+                                if (board[r][col].isWater) break;
+                                if (board[r][col].piece) {
+                                    if (board[r][col].piece.color !== playerColor) {
+                                        moves.push({row: r, col});
+                                    }
+                                    break;
+                                }
+                                moves.push({row: r, col});
+                            }
+                            
+                            // Check down
+                            for (let r = row + 1; r < BOARD_SIZE; r++) {
+                                if (board[r][col].isWater) break;
+                                if (board[r][col].piece) {
+                                    if (board[r][col].piece.color !== playerColor) {
+                                        moves.push({row: r, col});
+                                    }
+                                    break;
+                                }
+                                moves.push({row: r, col});
+                            }
+                            
+                            // Check left
+                            for (let c = col - 1; c >= 0; c--) {
+                                if (board[row][c].isWater) break;
+                                if (board[row][c].piece) {
+                                    if (board[row][c].piece.color !== playerColor) {
+                                        moves.push({row, col: c});
+                                    }
+                                    break;
+                                }
+                                moves.push({row, col: c});
+                            }
+                            
+                            // Check right
+                            for (let c = col + 1; c < BOARD_SIZE; c++) {
+                                if (board[row][c].isWater) break;
+                                if (board[row][c].piece) {
+                                    if (board[row][c].piece.color !== playerColor) {
+                                        moves.push({row, col: c});
+                                    }
+                                    break;
+                                }
+                                moves.push({row, col: c});
+                            }
+                        } else {
+                            // Other pieces can move only one space
+                            const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // up, down, left, right
+                            
+                            for (const [dr, dc] of directions) {
+                                const newRow = row + dr;
+                                const newCol = col + dc;
+                                
+                                if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+                                    const targetCell = board[newRow][newCol];
+                                    
+                                    if (!targetCell.isWater && 
+                                        (!targetCell.piece || targetCell.piece.color !== playerColor)) {
+                                        moves.push({row: newRow, col: newCol});
+                                    }
+                                }
+                            }
+                        }
+                        
+                        setPossibleMoves(moves);
+                    }
+                }
+            };
+            
+            // Render the game board
+            const renderBoard = () => {
+                return (
+                    <div className="board-container flex flex-col items-center">
+                        <div className="board border-2 border-indigo-600 bg-gray-800">
+                            {board.map((row, rowIndex) => (
+                                <div key={rowIndex} className="flex">
+                                    {row.map((cell, colIndex) => {
+                                        const isSelected = selectedPiece && 
+                                            selectedPiece[0] === rowIndex && 
+                                            selectedPiece[1] === colIndex;
+                                        
+                                        const isPossibleMove = possibleMoves.some(
+                                            move => move.row === rowIndex && move.col === colIndex
+                                        );
+                                        
+                                        // Checkerboard pattern for non-water cells
+                                        const isEvenCell = (rowIndex + colIndex) % 2 === 0;
+                                        const cellBgClass = cell.isWater ? 'water-cell' : 
+                                            (isEvenCell ? 'bg-gray-800' : 'bg-gray-700');
+                                        
+                                        return (
+                                            <div 
+                                                key={`${rowIndex}-${colIndex}`}
+                                                className={`board-cell ${cellBgClass} ${isPossibleMove ? 'possible-move' : ''}`}
+                                                onClick={() => handleCellClick(rowIndex, colIndex)}
+                                            >
+                                                {cell.piece && (
+                                                    <div 
+                                                        className={`piece ${cell.piece.color}-piece ${isSelected ? 'selected' : ''} ${!cell.piece.revealed && cell.piece.color !== playerColor ? 'hidden-piece' : ''}`}
+                                                    >
+                                                        {cell.piece.revealed || cell.piece.color === playerColor 
+                                                            ? cell.piece.icon 
+                                                            : '?'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+            
+            // Render the setup panel
+            const renderSetupPanel = () => {
+                if (gamePhase !== 'setup' || !playerColor) return null;
+                
+                return (
+                    <div className="setup-panel mt-6 p-6 rounded-lg">
+                        <h3 className="text-xl mb-4 font-bold text-indigo-300">Place Your Skibidi Pieces</h3>
+                        <div className="grid grid-cols-4 gap-3">
+                            {Object.entries(setupPieces[playerColor]).map(([pieceType, count]) => (
+                                <div 
+                                    key={pieceType}
+                                    className={`piece-option p-3 rounded-lg ${selectedSetupPiece === pieceType ? 'bg-indigo-700 border-indigo-300' : 'bg-gray-700'} ${count === 0 ? 'opacity-50' : 'cursor-pointer hover:bg-gray-600'}`}
+                                    onClick={() => count > 0 && handleSetupPieceSelect(pieceType)}
+                                >
+                                    <div className="flex items-center">
+                                        <span className="mr-3 text-2xl">{PIECE_TYPES[pieceType].icon}</span>
+                                        <div>
+                                            <div className="font-medium">{PIECE_TYPES[pieceType].name}</div>
+                                            <div className="text-sm text-indigo-300">{count} left</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-4 text-sm text-gray-300 bg-gray-800 p-3 rounded-lg border border-gray-700">
+                            <span className="text-indigo-300 font-bold">TIP:</span> Place your pieces in the {playerColor === 'red' ? 'bottom' : 'top'} 4 rows. Remember to protect your flag!
+                        </div>
+                    </div>
+                );
+            };
+            
+            // Render the connection panel
+            const renderConnectionPanel = () => {
+                if (connected) return null;
+                
+                return (
+                    <div className="connection-panel p-8 rounded-lg max-w-md mx-auto mt-16 transform transition-all hover:scale-105">
+                        <h2 className="game-title text-3xl mb-6 text-center text-indigo-400">SKIBIDI STRATEGO</h2>
+                        <div className="mb-6 text-center">
+                            <div className="text-5xl mb-4">🎮</div>
+                            <p className="text-gray-300">Connect to play with another player in this epic Skibidi battle!</p>
+                        </div>
+                        <button 
+                            className="btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg w-full flex items-center justify-center space-x-2"
+                            onClick={connectToServer}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M5.05 3.636a1 1 0 010 1.414 7 7 0 000 9.9 1 1 0 11-1.414 1.414 9 9 0 010-12.728 1 1 0 011.414 0zm9.9 0a1 1 0 011.414 0 9 9 0 010 12.728 1 1 0 11-1.414-1.414 7 7 0 000-9.9 1 1 0 010-1.414zM7.879 6.464a1 1 0 010 1.414 3 3 0 000 4.243 1 1 0 11-1.415 1.414 5 5 0 010-7.07 1 1 0 011.415 0zm4.242 0a1 1 0 011.415 0 5 5 0 010 7.072 1 1 0 01-1.415-1.415 3 3 0 000-4.242 1 1 0 010-1.415z" clipRule="evenodd" />
+                            </svg>
+                            <span>Connect to Server</span>
+                        </button>
+                    </div>
+                );
+            };
+            
+            // Render the game creation panel
+            const renderGameCreationPanel = () => {
+                if (!connected || gameId || waitingForOpponent) return null;
+                
+                return (
+                    <div className="game-creation-panel p-8 rounded-lg max-w-md mx-auto mt-16">
+                        <h2 className="game-title text-2xl mb-6 text-center text-indigo-400">CREATE OR JOIN GAME</h2>
+                        <div className="flex flex-col space-y-4">
+                            <button 
+                                className="btn bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center space-x-2"
+                                onClick={createGame}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                </svg>
+                                <span>Create New Game</span>
+                            </button>
+                            <button 
+                                className="btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center space-x-2"
+                                onClick={joinGame}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                                </svg>
+                                <span>Join Existing Game</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+            
+            // Render the game over panel
+            const renderGameOverPanel = () => {
+                if (gamePhase !== 'gameOver') return null;
+                
+                return (
+                    <div className="game-over-panel p-8 rounded-lg max-w-md mx-auto mt-16">
+                        <h2 className="game-title text-2xl mb-6 text-center text-indigo-400">GAME OVER</h2>
+                        <div className="text-center mb-6">
+                            {winner === playerColor ? (
+                                <>
+                                    <div className="text-6xl mb-4">🏆</div>
+                                    <p className="text-2xl font-bold text-green-400">YOU WON!</p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-6xl mb-4">😢</div>
+                                    <p className="text-2xl font-bold text-red-400">YOU LOST!</p>
+                                </>
+                            )}
+                        </div>
+                        <button 
+                            className="btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg w-full"
+                            onClick={() => window.location.reload()}
+                        >
+                            Play Again
+                        </button>
+                    </div>
+                );
+            };
+            
+            // Render waiting for opponent panel
+            const renderWaitingPanel = () => {
+                if (!waitingForOpponent) return null;
+                
+                return (
+                    <div className="waiting-panel p-8 rounded-lg max-w-md mx-auto mt-16 bg-gray-800 bg-opacity-80 backdrop-blur-lg">
+                        <h2 className="text-2xl mb-6 text-center text-indigo-400">WAITING FOR OPPONENT</h2>
+                        <div className="flex justify-center mb-6">
+                            <div className="loading-spinner w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <div className="text-center">
+                            <p className="mb-4">Share this code with your opponent:</p>
+                            <div className="bg-gray-700 p-4 rounded-lg text-2xl font-bold text-indigo-300 tracking-widest">
+                                {gameId}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+            
+            return (
+                <div className="game-container p-6 min-h-screen flex flex-col items-center">
+                    <h1 className="game-title text-4xl mb-6 text-center text-indigo-400">SKIBIDI STRATEGO</h1>
+                    
+                    {message && (
+                        <div className="message-box p-4 mb-6 rounded-lg text-center w-full max-w-2xl">
+                            {message}
+                        </div>
+                    )}
+                    
+                    {renderConnectionPanel()}
+                    {renderGameCreationPanel()}
+                    {renderWaitingPanel()}
+                    
+                    {(gameId && !waitingForOpponent) && (
+                        <div className="game-board-container mt-6">
+                            {renderBoard()}
+                            {renderSetupPanel()}
+                            {renderGameOverPanel()}
+                        </div>
+                    )}
+                    
+                    {gamePhase === 'play' && (
+                        <div className="game-info mt-6 p-6 rounded-lg">
+                            <h3 className="text-xl mb-4 font-bold text-indigo-300">Game Info</h3>
+                            <div className="flex flex-col space-y-4">
+                                <div className="flex items-center">
+                                    <span className="w-32">You are playing as:</span> 
+                                    <span className={`font-bold text-lg px-3 py-1 rounded ${playerColor === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
+                                        {playerColor.toUpperCase()} TEAM
+                                    </span>
+                                </div>
+                                <div className="flex items-center">
+                                    <span className="w-32">Current turn:</span> 
+                                    <span className={`font-bold text-lg px-3 py-1 rounded ${currentPlayer === 'red' ? 'bg-red-900 text-red-300' : 'bg-blue-900 text-blue-300'}`}>
+                                        {currentPlayer.toUpperCase()} TEAM
+                                    </span>
+                                </div>
+                                <div className="mt-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
+                                    <h4 className="font-bold text-indigo-300 mb-2">Game Rules:</h4>
+                                    <ul className="text-sm text-gray-300 list-disc pl-5 space-y-1">
+                                        <li>Move one piece per turn or attack an opponent</li>
+                                        <li>Higher rank captures lower rank</li>
+                                        <li>Spy (🕵️) can defeat Marshal (🔱) when attacking</li>
+                                        <li>Miner (⛏️) can defuse Bombs (💣)</li>
+                                        <li>Scout (👁️) can move multiple spaces</li>
+                                        <li>Capture the Flag (🚩) to win!</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="mt-8 text-center text-gray-500 text-sm">
+                        Skibidi Stratego - A Skibidi-themed adaptation of the classic game
+                    </div>
+                </div>
+            );
+        };
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SkibidiStratego />);
+    </script>
+</body>
+</html>
