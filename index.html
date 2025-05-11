@@ -540,19 +540,49 @@ se the cor u    <!-- Include Google Fonts -->
                     setSelectedSetupPiece(null);
                 }
                 
-                // Check if all pieces are placed
-                const allPiecesPlaced = Object.values(newSetupPieces[playerColor]).every(count => count === 0);
-                if (allPiecesPlaced) {
-                    // In a real implementation, you would notify the server
-                    // For this demo, we'll simulate both players being ready
-                    setMessage('Waiting for opponent to finish setup...');
+                // Finish setting up pieces
+                const finishSetup = () => {
+                    // Check if all pieces are placed
+                    let allPiecesPlaced = true;
+                    for (const [pieceType, count] of Object.entries(setupPieces[playerColor])) {
+                        if (count > 0) {
+                            allPiecesPlaced = false;
+                            break;
+                        }
+                    }
                     
-                    // Simulate opponent finishing setup
-                    setTimeout(() => {
+                    if (!allPiecesPlaced) {
+                        setMessage('You must place all your pieces before starting!');
+                        return;
+                    }
+                    
+                    // Send piece setup to server
+                    if (socketRef.current && socketRef.current.connected) {
+                        // Create a simplified board representation with just the player's pieces
+                        const pieceSetup = board.map(row => 
+                            row.map(cell => 
+                                cell.piece && cell.piece.color === playerColor ? cell.piece : null
+                            )
+                        );
+                        
+                        socketRef.current.emit('setup_complete', {
+                            gameId,
+                            pieceSetup
+                        });
+                        
+                        setMessage('Waiting for opponent to finish setup...');
+                        
+                        // Listen for both players ready
+                        socketRef.current.once('game_start', () => {
+                            setGamePhase('play');
+                            setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
+                        });
+                    } else {
+                        // Fallback for local testing
                         setGamePhase('play');
                         setMessage(`Game started! ${currentPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
-                    }, 2000);
-                }
+                    }
+                };
             };
             
             // Handle cell click during gameplay
@@ -572,8 +602,8 @@ se the cor u    <!-- Include Google Fonts -->
                     const isValidMove = possibleMoves.some(move => move.row === row && move.col === col);
                     
                     if (isValidMove) {
-                        // Move the piece
-                        const newBoard = [...board];
+                        // Make a copy of the board
+                        const newBoard = JSON.parse(JSON.stringify(board));
                         const [selectedRow, selectedCol] = selectedPiece;
                         const movingPiece = newBoard[selectedRow][selectedCol].piece;
                         
@@ -631,9 +661,18 @@ se the cor u    <!-- Include Google Fonts -->
                         // Switch turns
                         const nextPlayer = currentPlayer === 'red' ? 'blue' : 'red';
                         setCurrentPlayer(nextPlayer);
-                        setMessage(`${nextPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
                         
-                        // In a real implementation, you would send this move to the server
+                        // Send the move to the server
+                        if (socketRef.current && socketRef.current.connected) {
+                            socketRef.current.emit('game_move', {
+                                gameId,
+                                from: { row: selectedRow, col: selectedCol },
+                                to: { row, col },
+                                piece: movingPiece
+                            });
+                        }
+                        
+                        setMessage(`${nextPlayer === playerColor ? 'Your' : 'Opponent\'s'} turn.`);
                     } else {
                         // Deselect if clicking elsewhere
                         setSelectedPiece(null);
@@ -968,3 +1007,42 @@ se the cor u    <!-- Include Google Fonts -->
     </script>
 </body>
 </html>
+
+            // Add effect to handle socket events
+            React.useEffect(() => {
+                // Listen for opponent moves
+                if (socketRef.current) {
+                    socketRef.current.on('opponent_move', (data) => {
+                        // Make a copy of the board
+                        const newBoard = JSON.parse(JSON.stringify(board));
+                        
+                        // Get the move details
+                        const { from, to } = data;
+                        
+                        // Move the piece
+                        newBoard[to.row][to.col].piece = newBoard[from.row][from.col].piece;
+                        newBoard[from.row][from.col].piece = null;
+                        
+                        // Update the board
+                        setBoard(newBoard);
+                        
+                        // Switch turns
+                        setCurrentPlayer(playerColor);
+                        setMessage('Your turn.');
+                    });
+                    
+                    socketRef.current.on('game_over', (data) => {
+                        setWinner(data.winner);
+                        setGamePhase('gameOver');
+                        setMessage(`Game over! ${data.winner === playerColor ? 'You won!' : 'You lost!'}`);
+                    });
+                }
+                
+                // Cleanup function
+                return () => {
+                    if (socketRef.current) {
+                        socketRef.current.off('opponent_move');
+                        socketRef.current.off('game_over');
+                    }
+                };
+            }, [board, playerColor]);
